@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29728.190
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReadAndConvertCovid19Data", "ReadAndConvertCovid19Data.csproj", "{F69B34A3-68B1-4ED1-8AD0-AA8CCA29732A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F69B34A3-68B1-4ED1-8AD0-AA8CCA29732A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F69B34A3-68B1-4ED1-8AD0-AA8CCA29732A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F69B34A3-68B1-4ED1-8AD0-AA8CCA29732A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F69B34A3-68B1-4ED1-8AD0-AA8CCA29732A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {49A0B206-0EC4-4A87-87A7-9A258EF2C714}
+	EndGlobalSection
+EndGlobal
