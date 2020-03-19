@@ -61,6 +61,7 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
         const string c_covid19DeathsUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv";
         const string c_covid19RecoveredUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv";
         const string c_covid19OutputFilename = "COVID-19-Time-Series-csse.csv";
+        const string c_updatedOutputFilename = "COVID-19-Updated.txt";
 
         // UTF8 encoding with now byte-order mark.
         static Encoding s_UTF8_No_BOM = new UTF8Encoding(false, true);
@@ -73,6 +74,52 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             {
                 Console.WriteLine(c_message);
 
+                // Generate the output path
+                string outPath = null;
+                string updatedPath = null;
+                if (args.Length >= 1)
+                {
+                    string arg = Path.GetFullPath(args[0]);
+                    if (Directory.Exists(arg))
+                    {
+                        outPath = Path.Combine(arg, c_covid19OutputFilename);
+                        updatedPath = Path.Combine(arg, c_updatedOutputFilename); 
+                    }
+                    else
+                    {
+                        if (Directory.Exists(Path.GetDirectoryName(arg)))
+                        {
+                            outPath = arg;
+                        }
+                        else
+                        {
+                            throw new Exception($"Invalid filename or path: {arg}");
+                        }
+
+                        if (args.Length >= 2)
+                        {
+                            arg = Path.GetFullPath(args[1]);
+                            if (Directory.Exists(arg))
+                            {
+                                updatedPath = Path.Combine(arg, c_updatedOutputFilename);
+                            }
+                            else if (Directory.Exists(Path.GetDirectoryName(arg)))
+                            {
+                                updatedPath = arg;
+                            }
+                            else
+                            {
+                                throw new Exception($"Invalid filename or path: {arg}");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Use the default folder and filename
+                    outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), c_covid19OutputFilename);
+                }
+
                 var dataSet = new DataSet();
                 Console.WriteLine("Reading from " + c_covid19ConfirmedUrl);
                 ReadData(c_covid19ConfirmedUrl, dataSet, DataType.Confirmed);
@@ -81,12 +128,18 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
                 Console.WriteLine("Reading from " + c_covid19RecoveredUrl);
                 ReadData(c_covid19RecoveredUrl, dataSet, DataType.Recovered);
 
-                // Generate filename
-                string outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), c_covid19OutputFilename);
-
                 Console.WriteLine();
                 Console.WriteLine($"Writing combined time series data to '{outPath}'.");
                 WriteData(dataSet, outPath);
+
+                if (updatedPath != null)
+                {
+                    Console.WriteLine($"Writing updated date to '{updatedPath}'.");
+                    using (var writer = new StreamWriter(updatedPath, false, s_UTF8_No_BOM))
+                    {
+                        writer.WriteLine(DateTime.Now.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
+                    }
+                }
 
                 Console.WriteLine($"Done.");
             }
