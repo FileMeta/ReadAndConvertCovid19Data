@@ -216,23 +216,34 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             }
         }
 
+        static readonly DataRecord s_zeroRecord = new DataRecord();
+
         static void WriteData(DataSet dataSet, string path)
         {
             using (var writer = new StreamWriter(path, false, s_UTF8_No_BOM))
             {
                 writer.NewLine = "\n";
-                writer.WriteLine("\"Date\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"Confirmed\",\"Deaths\",\"Recovered\"");
+                writer.WriteLine("\"Date\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"Confirmed\",\"Deaths\",\"Recovered\",\"NewConfirmed\",\"NewDeaths\",\"NewRecovered\"");
 
                 var dateList = new List<KeyValuePair<DateTime, Dictionary<DataKey, DataRecord>>>(dataSet);
                 dateList.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                Dictionary<DataKey, DataRecord> prevDate = null;
                 foreach(var datePair in dateList)
                 {
                     var recordList = new List<KeyValuePair<DataKey, DataRecord>>(datePair.Value);
                     recordList.Sort((a, b) => a.Key.CompareTo(b.Key));
                     foreach(var recordPair in recordList)
                     {
-                        writer.WriteLine(ToString(recordPair));
+                        DataRecord prevRecord = null;
+                        if (prevDate == null || !prevDate.TryGetValue(recordPair.Key, out prevRecord))
+                        {
+                            prevRecord = s_zeroRecord;
+                        }
+                        writer.WriteLine(ToString(datePair.Key, recordPair.Key, recordPair.Value, prevRecord));
                     }
+
+                    prevDate = datePair.Value;
                 }
             }
         }
@@ -288,24 +299,26 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             }
         }
 
-        static string ToString(KeyValuePair<DataKey, DataRecord> pair)
+        static string ToString(DateTime date, DataKey key, DataRecord record, DataRecord prevRecord)
         {
             return String.Join(",",
-                pair.Key.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                string.Concat("\"", pair.Key.ProvinceState, "\""),
-                string.Concat("\"", pair.Key.CountryRegion, "\""),
-                pair.Key.Latitude,
-                pair.Key.Longitude,
-                pair.Value.Confirmed,
-                pair.Value.Deaths,
-                pair.Value.Recovered);
+                date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                string.Concat("\"", key.ProvinceState, "\""),
+                string.Concat("\"", key.CountryRegion, "\""),
+                key.Latitude,
+                key.Longitude,
+                record.Confirmed,
+                record.Deaths,
+                record.Recovered,
+                record.Confirmed - prevRecord.Confirmed,
+                record.Deaths - prevRecord.Deaths,
+                record.Recovered - prevRecord.Recovered);
         }
 
     } // Class Program
 
     class DataKey : IComparable<DataKey>
     {
-        public DateTime Date { get; private set; }
         public string ProvinceState { get; private set; }
         public string CountryRegion { get; private set; }
         public string Latitude { get; private set; }
@@ -313,7 +326,6 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
         public DataKey(DateTime datex, string provinceState, string countryRegion, string latitude, string longitude)
         {
-            Date = datex;
             ProvinceState = provinceState;
             CountryRegion = countryRegion;
             Latitude = latitude;
@@ -322,8 +334,7 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
         public override int GetHashCode()
         {
-            return Date.GetHashCode()
-                ^ ProvinceState.GetHashCode()
+            return ProvinceState.GetHashCode()
                 ^ CountryRegion.GetHashCode();
         }
 
@@ -332,16 +343,13 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             var other = obj as DataKey;
             if (obj == null) return false;
 
-            return Date.Equals(other.Date)
-                && ProvinceState.Equals(other.ProvinceState)
+            return ProvinceState.Equals(other.ProvinceState)
                 && CountryRegion.Equals(other.CountryRegion);
         }
 
         public int CompareTo(DataKey other)
         {
-            int i = Date.CompareTo(other.Date);
-            if (i != 0) return i;
-            i = CountryRegion.CompareTo(other.CountryRegion);
+            int i = CountryRegion.CompareTo(other.CountryRegion);
             if (i != 0) return i;
             return ProvinceState.CompareTo(other.ProvinceState);
         }
