@@ -165,8 +165,17 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             request.Headers.Set("Cache-Control", "max-age=0, no-cache, no-store");
             HttpWebResponse response = (HttpWebResponse)request.GetResponse();
 
+            // StreamReader seems to have trouble with an HTTPWebResponse stream. When the response re-buffers
+            // we get an end of file. To compensate, read to a memory stream first and then parse.
+            var memStream = new MemoryStream();
+            using (var httpStream = response.GetResponseStream())
+            {
+                httpStream.CopyTo(memStream);
+            }
+            memStream.Position = 0;
+
             //Expected Header: Province/State,Country/Region,Lat,Long,1/22/20,other dates
-            using (var reader = new CsvReader(new StreamReader(response.GetResponseStream(), Encoding.UTF8, true), true))
+            using (var reader = new CsvReader(new StreamReader(memStream, Encoding.UTF8, true), true))
             {
                 // Read the header line
                 var header = reader.Read();
