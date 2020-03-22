@@ -130,14 +130,15 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
                 Console.WriteLine();
                 Console.WriteLine($"Writing combined time series data to '{outPath}'.");
-                WriteData(dataSet, outPath);
+                var lastDate = WriteData(dataSet, outPath);
+                Console.WriteLine($"Date of most recent data: {lastDate.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)}");
 
                 if (updatedPath != null)
                 {
                     Console.WriteLine($"Writing updated date to '{updatedPath}'.");
                     using (var writer = new StreamWriter(updatedPath, false, s_UTF8_No_BOM))
                     {
-                        writer.WriteLine(DateTime.Now.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
+                        writer.WriteLine(lastDate.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
                     }
                 }
 
@@ -210,7 +211,12 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
                     for (int i=0; i<dates.Count; ++i)
                     {
-                        AddData(dataSet, dates[i], line[0], line[1], line[2], line[3], int.Parse(line[i + 4]), dataType);
+                        int data;
+                        if (!int.TryParse(line[i+4], out data))
+                        {
+                            data = 0;
+                        }
+                        AddData(dataSet, dates[i], line[0], line[1], line[2], line[3], data, dataType);
                     }
                 }
             }
@@ -218,7 +224,8 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
         static readonly DataRecord s_zeroRecord = new DataRecord();
 
-        static void WriteData(DataSet dataSet, string path)
+        // Returns the date of the last datapoint written.
+        static DateTime WriteData(DataSet dataSet, string path)
         {
             using (var writer = new StreamWriter(path, false, s_UTF8_No_BOM))
             {
@@ -245,6 +252,8 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
                     prevDate = datePair.Value;
                 }
+
+                return dateList.Last().Key;
             }
         }
 
