@@ -57,16 +57,16 @@ open source project at
 https://github.com/FileMeta/ReadAndConvertCovid19Data
 ";
 
-        const string c_covid19ConfirmedUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv";
-        const string c_covid19DeathsUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv";
-        const string c_covid19RecoveredUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv";
+        const string c_covid19ConfirmedUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv";
+        const string c_covid19DeathsUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv";
+        //const string c_covid19RecoveredUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv";
         const string c_covid19OutputFilename = "COVID-19-Time-Series-csse.csv";
         const string c_updatedOutputFilename = "COVID-19-Updated.txt";
 
         // UTF8 encoding with now byte-order mark.
         static Encoding s_UTF8_No_BOM = new UTF8Encoding(false, true);
 
-        enum DataType { Confirmed, Deaths, Recovered };
+        enum DataType { Confirmed, Deaths/*, Recovered*/ };
 
         static void Main(string[] args)
         {
@@ -125,8 +125,8 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
                 ReadData(c_covid19ConfirmedUrl, dataSet, DataType.Confirmed);
                 Console.WriteLine("Reading from " + c_covid19DeathsUrl);
                 ReadData(c_covid19DeathsUrl, dataSet, DataType.Deaths);
-                Console.WriteLine("Reading from " + c_covid19RecoveredUrl);
-                ReadData(c_covid19RecoveredUrl, dataSet, DataType.Recovered);
+                //Console.WriteLine("Reading from " + c_covid19RecoveredUrl);
+                //ReadData(c_covid19RecoveredUrl, dataSet, DataType.Recovered);
 
                 Console.WriteLine();
                 Console.WriteLine($"Writing combined time series data to '{outPath}'.");
@@ -230,7 +230,7 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             using (var writer = new StreamWriter(path, false, s_UTF8_No_BOM))
             {
                 writer.NewLine = "\n";
-                writer.WriteLine("\"Date\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"Confirmed\",\"Deaths\",\"Recovered\",\"NewConfirmed\",\"NewDeaths\",\"NewRecovered\"");
+                writer.WriteLine("\"Date\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"Confirmed\",\"Deaths\",\"NewConfirmed\",\"NewDeaths\"");
 
                 var dateList = new List<KeyValuePair<DateTime, Dictionary<DataKey, DataRecord>>>(dataSet);
                 dateList.Sort((a, b) => a.Key.CompareTo(b.Key));
@@ -298,9 +298,9 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
                     dataRecord.Deaths = data;
                     break;
 
-                case DataType.Recovered:
-                    dataRecord.Recovered = data;
-                    break;
+                //case DataType.Recovered:
+                //    dataRecord.Recovered = data;
+                //    break;
 
                 default:
                     Debug.Fail("Unexpected DataType");
@@ -318,10 +318,11 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
                 key.Longitude,
                 record.Confirmed,
                 record.Deaths,
-                record.Recovered,
+                //record.Recovered,
                 record.Confirmed - prevRecord.Confirmed,
-                record.Deaths - prevRecord.Deaths,
-                record.Recovered - prevRecord.Recovered);
+                record.Deaths - prevRecord.Deaths
+                //record.Recovered - prevRecord.Recovered
+                );
         }
 
     } // Class Program
@@ -368,6 +369,6 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
     {
         public int Confirmed;
         public int Deaths;
-        public int Recovered;
+        //public int Recovered;
     }
 }
