@@ -30,6 +30,13 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/*
+ * Coding style disclaimer:
+ * This is a quick hack - intended to last a few months during the COVID-19
+ * crisis. It's not intended to be an example of well-structured code.
+ * 
+*/
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -43,8 +50,6 @@ using FileMeta;
 namespace ReadAndConvertCovid19Data
 {
 
-    using DataSet = Dictionary<DateTime, Dictionary<DataKey, DataRecord>>;
-
     class Program
     {
         const string c_message =
@@ -57,14 +62,67 @@ open source project at
 https://github.com/FileMeta/ReadAndConvertCovid19Data
 ";
 
-        const string c_covid19ConfirmedUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv";
-        const string c_covid19DeathsUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv";
-        //const string c_covid19RecoveredUrl = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv";
+        const string c_syntax =
+@"Syntax:
+   ReadAndConvertCovid19Data -o <filename> [options]
+
+Multiple -o filenames may be specified each with different options thereby
+creating multiple outputs with different filtering or aggregation levels.
+
+Options:
+  -h
+  -?
+    Show this help text;
+
+  -country <name>
+  -region <name>
+    (These options are equivalent)
+    Filter data to the specified region or country.
+
+  -state <name>
+  -province <name>
+    (These options are equivalent)
+    Filter data to the specified stateProvince field. It is recommended
+    that, when using this option, you also specify -country or -region as the
+    same state or province name may occur in multiple countries.
+
+  -county <name>
+  -district <name>
+    (These options are equivalent)
+    Filter data to the specified country, district, or administrative area.
+    It is recommended that, when using this option, you also specify -state
+    or -province as the same county name may occur in multiple countries.
+
+  -bycountry
+  -byregion
+    (These options are equivalent)
+    Report aggregated data by countryRegion. Breakdown by stateProvince, or
+    countyDistrict will not be included.
+
+  -bystate
+  -byprovince
+    (These options are equivalent)
+    Report aggregated data by stateProvince. Breakdown by countyRegion will
+    not be included.
+    
+  -bycounty
+  -bydistrict
+    (These options are equivalent)
+    This is the default, data are reported at the most fine-grained level,
+    the county, district, or other administrative area.
+
+  -updated <filename>
+    Write the date the of the last data element to the specified file. This
+    may be used to keep a webpage updated as to when data have been updated.
+";
+
+        // UTF8 encoding with no byte-order mark.
+        public static readonly Encoding s_UTF8_No_BOM = new UTF8Encoding(false, true);
+
+        const string c_covidDataUrlPrefix = @"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/";
+
         const string c_covid19OutputFilename = "COVID-19-Time-Series-csse.csv";
         const string c_updatedOutputFilename = "COVID-19-Updated.txt";
-
-        // UTF8 encoding with now byte-order mark.
-        static Encoding s_UTF8_No_BOM = new UTF8Encoding(false, true);
 
         enum DataType { Confirmed, Deaths/*, Recovered*/ };
 
@@ -74,82 +132,135 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             {
                 Console.WriteLine(c_message);
 
-                // Generate the output path
-                string outPath = null;
+                // Parse the command line
+                var datasets = new List<DataSet>();
                 string updatedPath = null;
-                if (args.Length >= 1)
+                bool showHelp = args.Length == 0;
                 {
-                    string arg = Path.GetFullPath(args[0]);
-                    if (Directory.Exists(arg))
+                    DataSet currentDataset = null;
+                    for (int i = 0; i < args.Length; ++i)
                     {
-                        outPath = Path.Combine(arg, c_covid19OutputFilename);
-                        updatedPath = Path.Combine(arg, c_updatedOutputFilename); 
-                    }
-                    else
-                    {
-                        if (Directory.Exists(Path.GetDirectoryName(arg)))
+                        switch (args[i].ToLowerInvariant())
                         {
-                            outPath = arg;
-                        }
-                        else
-                        {
-                            throw new Exception($"Invalid filename or path: {arg}");
-                        }
+                            case "-o":
+                                ++i;
+                                if (i >= args.Length) throw new ArgumentException("Expected filename after -o command-line argument.");
+                                currentDataset = new DataSet();
+                                currentDataset.OutputPath = ArgumentToPath(args[i], c_covid19OutputFilename);
+                                datasets.Add(currentDataset);
+                                break;
 
-                        if (args.Length >= 2)
-                        {
-                            arg = Path.GetFullPath(args[1]);
-                            if (Directory.Exists(arg))
-                            {
-                                updatedPath = Path.Combine(arg, c_updatedOutputFilename);
-                            }
-                            else if (Directory.Exists(Path.GetDirectoryName(arg)))
-                            {
-                                updatedPath = arg;
-                            }
-                            else
-                            {
-                                throw new Exception($"Invalid filename or path: {arg}");
-                            }
+                            case "-country":
+                            case "-region":
+                                ++i;
+                                if (i >= args.Length) throw new ArgumentException("Expected name after -country or -region.");
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before filtering.");
+                                currentDataset.FilterCountryRegion = args[i];
+                                break;
+
+                            case "-state":
+                            case "-province":
+                                ++i;
+                                if (i >= args.Length) throw new ArgumentException("Expected name after -state or -province.");
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before filtering.");
+                                currentDataset.FilterProvinceState = args[i];
+                                break;
+
+                            case "-county":
+                            case "-district":
+                                ++i;
+                                if (i >= args.Length) throw new ArgumentException("Expected name after -county or district.");
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before filtering.");
+                                currentDataset.FilterCountyDistrict = args[i];
+                                break;
+
+                            case "-bycountry":
+                            case "-byregion":
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before aggregation.");
+                                currentDataset.AggregationLevel = GeographicLevel.CountryRegion;
+                                break;
+
+                            case "-bystate":
+                            case "-byprovince":
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before aggregation.");
+                                currentDataset.AggregationLevel = GeographicLevel.ProvinceState;
+                                break;
+
+                            case "-bycounty":
+                            case "-bydistrict":
+                                if (currentDataset == null) throw new ArgumentException("Must specify -o filename before aggregation.");
+                                currentDataset.AggregationLevel = GeographicLevel.CountyDistrict;
+                                break;
+
+                            case "-updated":
+                                ++i;
+                                if (i >= args.Length) throw new ArgumentException("Expected filename after -updated.");
+                                updatedPath = ArgumentToPath(args[i], c_updatedOutputFilename);
+                                break;
+
+                            case "-h":
+                            case "-?":
+                                showHelp = true;
+                                break;
+
+                            default:
+                                throw new ArgumentException("Unexpected command-line argument: " + args[i]);
                         }
                     }
+                }
+
+                if (showHelp)
+                {
+                    Console.WriteLine(c_syntax);
                 }
                 else
                 {
-                    // Use the default folder and filename
-                    outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), c_covid19OutputFilename);
-                }
+                    // Read the data
+                    for (int dateIndex = 0; ReadData(dateIndex, datasets); ++dateIndex) ;
 
-                var dataSet = new DataSet();
-                Console.WriteLine("Reading from " + c_covid19ConfirmedUrl);
-                ReadData(c_covid19ConfirmedUrl, dataSet, DataType.Confirmed);
-                Console.WriteLine("Reading from " + c_covid19DeathsUrl);
-                ReadData(c_covid19DeathsUrl, dataSet, DataType.Deaths);
-                //Console.WriteLine("Reading from " + c_covid19RecoveredUrl);
-                //ReadData(c_covid19RecoveredUrl, dataSet, DataType.Recovered);
+                    Console.WriteLine();
 
-                Console.WriteLine();
-                Console.WriteLine($"Writing combined time series data to '{outPath}'.");
-                var lastDate = WriteData(dataSet, outPath);
-                Console.WriteLine($"Date of most recent data: {lastDate.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)}");
-
-                if (updatedPath != null)
-                {
-                    Console.WriteLine($"Writing updated date to '{updatedPath}'.");
-                    using (var writer = new StreamWriter(updatedPath, false, s_UTF8_No_BOM))
+                    DateTime lastDate = DateTime.MinValue;
+                    foreach (var dataset in datasets)
                     {
-                        writer.WriteLine(lastDate.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
+                        dataset.WriteData();
+                        if (lastDate < dataset.LastDate) lastDate = dataset.LastDate;
+                    }
+
+                    if (!string.IsNullOrEmpty(updatedPath))
+                    {
+                        Console.WriteLine($"Writing updated date to '{updatedPath}'.");
+                        using (var writer = new StreamWriter(updatedPath, false, s_UTF8_No_BOM))
+                        {
+                            writer.WriteLine(lastDate.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
+                        }
                     }
                 }
 
-                Console.WriteLine($"Done.");
+                Console.WriteLine();
+                Console.WriteLine("Done.");
             }
             catch (Exception err)
             {
                 Console.WriteLine(err.ToString());
+                Console.WriteLine("Use \"-h\" command-line option to view syntax and help.");
             }
 
             Win32Interop.ConsoleHelper.PromptAndWaitIfSoleConsole();
+        }
+
+        static string ArgumentToPath(string arg, string defaultFilename)
+        {
+            string path = Path.GetFullPath(arg);
+            if (Directory.Exists(path))
+            {
+                return Path.Combine(path, defaultFilename);
+            }
+            if (Directory.Exists(Path.GetDirectoryName(path)))
+            {
+                return path;
+            }
+            throw new Exception($"Invalid filename or path: {arg}");
         }
 
         // Even with this cache policy, the underlying system still caches for up to five minutes
@@ -158,44 +269,98 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
         static readonly System.Net.Cache.HttpRequestCachePolicy s_cachePolicy =
             new System.Net.Cache.HttpRequestCachePolicy(System.Net.Cache.HttpRequestCacheLevel.BypassCache);
 
-        static void ReadData(string url, DataSet dataSet, DataType dataType)
+        static bool ReadData(int dateIndex, IEnumerable<DataSet> datasets)
         {
-            HttpWebRequest.DefaultCachePolicy = s_cachePolicy;
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.CachePolicy = s_cachePolicy;
-            request.Headers.Set("Cache-Control", "max-age=0, no-cache, no-store");
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+            string url = $"{c_covidDataUrlPrefix}{IndexToDate(dateIndex).ToString("MM-dd-yyyy")}.csv";
+            Console.WriteLine("Reading from " + url);
 
-            // StreamReader seems to have trouble with an HTTPWebResponse stream. When the response re-buffers
-            // we get an end of file. To compensate, read to a memory stream first and then parse.
-            var memStream = new MemoryStream();
-            using (var httpStream = response.GetResponseStream())
+            MemoryStream memStream;
+            try
             {
-                httpStream.CopyTo(memStream);
-            }
-            memStream.Position = 0;
+                HttpWebRequest.DefaultCachePolicy = s_cachePolicy;
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+                request.CachePolicy = s_cachePolicy;
+                request.Headers.Set("Cache-Control", "max-age=0, no-cache, no-store");
+                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
 
-            //Expected Header: Province/State,Country/Region,Lat,Long,1/22/20,other dates
+                // StreamReader seems to have trouble with an HTTPWebResponse stream. When the response re-buffers
+                // we get an end of file. To compensate, read to a memory stream first and then parse.
+                memStream = new MemoryStream();
+                using (var httpStream = response.GetResponseStream())
+                {
+                    httpStream.CopyTo(memStream);
+                }
+                memStream.Position = 0;
+            }
+            catch (WebException err)
+            {
+                var response = err.Response as HttpWebResponse;
+                if (response != null && response.StatusCode == HttpStatusCode.NotFound) return false;
+                throw;
+            }
+
+            //Expected Header: FIPS, Admin2, Province_State, Country, Last_Update, Lat, Long_, Confirmed, Deaths, Recovered, Active, Combined_Key
             using (var reader = new CsvReader(new StreamReader(memStream, Encoding.UTF8, true), true))
             {
                 // Read the header line
                 var header = reader.Read();
 
-                // Ensure the format is what we expect
-                if (header[0] != "Province/State"
-                    || header[1] != "Country/Region"
-                    || header[2] != "Lat"
-                    || header[3] != "Long"
-                )
+                /* Known layouts:
+                 * Province/State, Country/Region, Last Update, Confirmed, Deaths, Recovered
+                 * Province/State, Country/Region, Last Update, Confirmed, Deaths, Recovered, Latitude, Longitude
+                 * FIPS, Admin2, Province_State, Country_Region, Last_Update, Lat, Long_, Confirmed, Deaths, Recovered, Active, Combined_Key
+                 */
+
+                int countyIndex = -1;
+                int stateIndex = -1;
+                int countryIndex = -1;
+                int latIndex = -1;
+                int longIndex = -1;
+                int confirmedIndex = -1;
+                int deathsIndex = -1;
+                for (int i = 0; i < header.Length; ++i)
                 {
-                    throw new Exception("Unexpected data header format.");
+                    switch (header[i].ToLowerInvariant())
+                    {
+                        case "admin2":
+                            countyIndex = i;
+                            break;
+
+                        case "province_state":
+                        case "province/state":
+                            stateIndex = i;
+                            break;
+
+                        case "country_region":
+                        case "country/region":
+                            countryIndex = i;
+                            break;
+
+                        case "lat":
+                        case "latitude":
+                            latIndex = i;
+                            break;
+
+                        case "long":
+                        case "long_":
+                        case "longitude":
+                            longIndex = i;
+                            break;
+
+                        case "confirmed":
+                            confirmedIndex = i;
+                            break;
+
+                        case "deaths":
+                            deathsIndex = i;
+                            break;
+                    }
                 }
 
-                // Read the dates
-                var dates = new List<DateTime>();
-                for (int i=4; i<header.Length; ++i)
+                // Ensure the fields we expect are present
+                if (stateIndex < 0 || countryIndex < 0 || confirmedIndex < 0 || deathsIndex < 0)
                 {
-                    dates.Add(ParseSimpleDate(header[i]));
+                    throw new Exception("Unexpected data header format: " + string.Join(",", header));
                 }
 
                 // Read the data
@@ -204,57 +369,49 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
                     var line = reader.Read();
                     if (line == null) break;
 
-                    if (line.Length != dates.Count + 4)
+                    // Skip if counts don't parse (may be empty string)
+                    int confirmed;
+                    if (!int.TryParse(line[confirmedIndex], out confirmed)) continue;
+                    int deaths;
+                    if (!int.TryParse(line[deathsIndex], out deaths)) continue;
+
+                    string countyDistrict = (countyIndex >= 0) ? line[countyIndex] : string.Empty;
+                    string provinceState = line[stateIndex];
+                    string countryRegion = line[countryIndex];
+                    string latitude = (latIndex >= 0) ? line[latIndex] : string.Empty;
+                    string longitude = (longIndex >= 0) ? line[longIndex] : string.Empty;
+
+                    // Special Updates and Cleanup
+                    if (countryRegion.Equals("Mainland China", StringComparison.OrdinalIgnoreCase))
+                        countryRegion = "China";
+                    if (countryRegion.Equals("US") && countyIndex < 0)
                     {
-                        throw new Exception($"Unexpected input data. Expected {dates.Count} entries in the date series. Found {line.Length - 4}.");
+                        int comma = provinceState.IndexOf(',');
+                        if (comma >= 0)
+                        {
+                            countyDistrict = provinceState.Substring(0, comma).Trim();
+                            provinceState = States.DeAbbreviate(provinceState.Substring(comma + 1).Trim());
+                            if (countyDistrict.EndsWith(" County", StringComparison.OrdinalIgnoreCase))
+                            {
+                                countyDistrict = countyDistrict.Substring(0, countyDistrict.Length - 7);
+                            }
+                        }
+                    }
+                    if (countyDistrict.Equals("Virgin Islands", StringComparison.OrdinalIgnoreCase)
+                        && countryRegion.Equals("US", StringComparison.OrdinalIgnoreCase))
+                    {
+                        provinceState = "Virgin Islands";
+                        countyDistrict = string.Empty;
                     }
 
-                    for (int i=0; i<dates.Count; ++i)
+                    foreach (var dataset in datasets)
                     {
-                        int data;
-                        if (!int.TryParse(line[i+4], out data))
-                        {
-                            data = 0;
-                        }
-                        AddData(dataSet, dates[i], line[0], line[1], line[2], line[3], data, dataType);
+                        dataset.AddData(dateIndex, countyDistrict, provinceState, countryRegion, latitude, longitude, confirmed, deaths);
                     }
                 }
             }
-        }
 
-        static readonly DataRecord s_zeroRecord = new DataRecord();
-
-        // Returns the date of the last datapoint written.
-        static DateTime WriteData(DataSet dataSet, string path)
-        {
-            using (var writer = new StreamWriter(path, false, s_UTF8_No_BOM))
-            {
-                writer.NewLine = "\n";
-                writer.WriteLine("\"Date\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"Confirmed\",\"Deaths\",\"NewConfirmed\",\"NewDeaths\"");
-
-                var dateList = new List<KeyValuePair<DateTime, Dictionary<DataKey, DataRecord>>>(dataSet);
-                dateList.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-                Dictionary<DataKey, DataRecord> prevDate = null;
-                foreach(var datePair in dateList)
-                {
-                    var recordList = new List<KeyValuePair<DataKey, DataRecord>>(datePair.Value);
-                    recordList.Sort((a, b) => a.Key.CompareTo(b.Key));
-                    foreach(var recordPair in recordList)
-                    {
-                        DataRecord prevRecord = null;
-                        if (prevDate == null || !prevDate.TryGetValue(recordPair.Key, out prevRecord))
-                        {
-                            prevRecord = s_zeroRecord;
-                        }
-                        writer.WriteLine(ToString(datePair.Key, recordPair.Key, recordPair.Value, prevRecord));
-                    }
-
-                    prevDate = datePair.Value;
-                }
-
-                return dateList.Last().Key;
-            }
+            return true;
         }
 
         private static DateTime ParseSimpleDate(string strDate)
@@ -270,72 +427,33 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             return date;
         }
 
-        private static void AddData(DataSet dataset, DateTime date, string provinceState, string countryRegion, string latitude, string longitude, int data, DataType dataType)
+        // Date of beginning of COVID-19 data
+        static readonly DateTime ZeroDate = new DateTime(2020, 01, 22, 0, 0, 0, 0, DateTimeKind.Unspecified);
+
+        static int DateToIndex(DateTime date)
         {
-            Dictionary<DataKey, DataRecord> dateDict;
-            if (!dataset.TryGetValue(date, out dateDict))
-            {
-                dateDict = new Dictionary<DataKey, DataRecord>();
-                dataset.Add(date, dateDict);
-            }
-
-            var dataKey = new DataKey(date, provinceState, countryRegion, latitude, longitude);
-
-            DataRecord dataRecord;
-            if (!dateDict.TryGetValue(dataKey, out dataRecord))
-            {
-                dataRecord = new DataRecord();
-                dateDict.Add(dataKey, dataRecord);
-            }
-
-            switch (dataType)
-            {
-                case DataType.Confirmed:
-                    dataRecord.Confirmed = data;
-                    break;
-
-                case DataType.Deaths:
-                    dataRecord.Deaths = data;
-                    break;
-
-                //case DataType.Recovered:
-                //    dataRecord.Recovered = data;
-                //    break;
-
-                default:
-                    Debug.Fail("Unexpected DataType");
-                    break;
-            }
+            return (int)date.Subtract(ZeroDate).TotalDays;
         }
 
-        static string ToString(DateTime date, DataKey key, DataRecord record, DataRecord prevRecord)
+        public static DateTime IndexToDate(int dateIndex)
         {
-            return String.Join(",",
-                date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                string.Concat("\"", key.ProvinceState, "\""),
-                string.Concat("\"", key.CountryRegion, "\""),
-                key.Latitude,
-                key.Longitude,
-                record.Confirmed,
-                record.Deaths,
-                //record.Recovered,
-                record.Confirmed - prevRecord.Confirmed,
-                record.Deaths - prevRecord.Deaths
-                //record.Recovered - prevRecord.Recovered
-                );
+            return ZeroDate.AddDays(dateIndex);
         }
+
 
     } // Class Program
 
     class DataKey : IComparable<DataKey>
     {
+        public string CountyDistrict { get; private set; }
         public string ProvinceState { get; private set; }
         public string CountryRegion { get; private set; }
         public string Latitude { get; private set; }
         public string Longitude { get; private set; }
 
-        public DataKey(DateTime datex, string provinceState, string countryRegion, string latitude, string longitude)
+        public DataKey(string countyDistrict, string provinceState, string countryRegion, string latitude, string longitude)
         {
+            CountyDistrict = countyDistrict;
             ProvinceState = provinceState;
             CountryRegion = countryRegion;
             Latitude = latitude;
@@ -344,7 +462,8 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
 
         public override int GetHashCode()
         {
-            return ProvinceState.GetHashCode()
+            return CountyDistrict.GetHashCode()
+                ^ ProvinceState.GetHashCode()
                 ^ CountryRegion.GetHashCode();
         }
 
@@ -353,7 +472,8 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
             var other = obj as DataKey;
             if (obj == null) return false;
 
-            return ProvinceState.Equals(other.ProvinceState)
+            return CountyDistrict.Equals(other.CountyDistrict)
+                && ProvinceState.Equals(other.ProvinceState)
                 && CountryRegion.Equals(other.CountryRegion);
         }
 
@@ -361,7 +481,9 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
         {
             int i = CountryRegion.CompareTo(other.CountryRegion);
             if (i != 0) return i;
-            return ProvinceState.CompareTo(other.ProvinceState);
+            i = ProvinceState.CompareTo(other.ProvinceState);
+            if (i != 0) return i;
+            return CountyDistrict.CompareTo(other.CountyDistrict);
         }
     }
 
@@ -370,5 +492,192 @@ https://github.com/FileMeta/ReadAndConvertCovid19Data
         public int Confirmed;
         public int Deaths;
         //public int Recovered;
+    }
+
+    enum GeographicLevel
+    {
+        None = 0,
+        CountyDistrict = 1,
+        ProvinceState = 2,
+        CountryRegion = 3
+    }
+
+    class DataSet
+    {
+        List<Dictionary<DataKey, DataRecord>> m_data = new List<Dictionary<DataKey, DataRecord>>();
+
+        public string OutputPath { get; set; }
+        public string FilterCountryRegion { get; set; }
+        public string FilterProvinceState { get; set; }
+        public string FilterCountyDistrict { get; set; }
+        public GeographicLevel AggregationLevel { get; set; }
+
+        public void AddData(int dateIndex, string countyDistrict, string provinceState, string countryRegion, string latitude, string longitude, int confirmed, int deaths)
+        {
+            // Apply Filters
+            if (!string.IsNullOrEmpty(FilterCountryRegion) && !FilterCountryRegion.Equals(countryRegion, StringComparison.OrdinalIgnoreCase))
+                return;
+            if (!string.IsNullOrEmpty(FilterProvinceState) && !FilterProvinceState.Equals(provinceState, StringComparison.OrdinalIgnoreCase))
+                return;
+            if (!string.IsNullOrEmpty(FilterCountyDistrict) && !FilterCountyDistrict.Equals(countyDistrict, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Apply Aggregation
+            if (AggregationLevel > GeographicLevel.CountyDistrict)
+                countyDistrict = string.Empty;
+            if (AggregationLevel > GeographicLevel.ProvinceState)
+                provinceState = string.Empty;
+
+            // Locate the date record
+            while (dateIndex >= m_data.Count) m_data.Add(new Dictionary<DataKey, DataRecord>());
+            var dateDict = m_data[dateIndex];
+
+            // Locate the data record
+            var dataKey = new DataKey(countyDistrict, provinceState, countryRegion, latitude, longitude);
+            DataRecord dataRecord;
+            if (!dateDict.TryGetValue(dataKey, out dataRecord))
+            {
+                dataRecord = new DataRecord();
+                dateDict.Add(dataKey, dataRecord);
+            }
+
+            dataRecord.Confirmed += confirmed;
+            dataRecord.Deaths += deaths;
+        }
+
+        static readonly DataRecord s_zeroRecord = new DataRecord();
+
+        public void WriteData()
+        {
+            Console.WriteLine($"Writing data to: {OutputPath}");
+
+            using (var writer = new StreamWriter(OutputPath, false, Program.s_UTF8_No_BOM))
+            {
+                writer.NewLine = "\n";
+                writer.WriteLine("\"Date\",\"CountyDistrict\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"TotalConfirmed\",\"TotalDeaths\",\"NewConfirmed\",\"NewDeaths\",\"Deltaconfirmed\",\"DeltaDeaths\"");
+
+                // We start with two days into the data thereby letting us look back two days for deltas
+                for (int i = 2; i < m_data.Count; ++i)
+                {
+                    var recordList = new List<KeyValuePair<DataKey, DataRecord>>(m_data[i]);
+                    recordList.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                    // Enumerate every record on this date
+                    foreach (var recordPair in recordList)
+                    {
+                        // Look for the two previous records
+                        DataRecord prevRecord = null;
+                        if (!m_data[i - 1].TryGetValue(recordPair.Key, out prevRecord))
+                        {
+                            prevRecord = s_zeroRecord;
+                        }
+                        DataRecord prevPrevRecord = null;
+                        if (!m_data[i - 2].TryGetValue(recordPair.Key, out prevPrevRecord))
+                        {
+                            prevPrevRecord = s_zeroRecord;
+                        }
+
+                        int newConfirmed = recordPair.Value.Confirmed - prevRecord.Confirmed;
+                        int deltaConfirmed = newConfirmed - (prevRecord.Confirmed - prevPrevRecord.Confirmed);
+                        int newDeaths = recordPair.Value.Deaths - prevRecord.Deaths;
+                        int deltaDeaths = newDeaths - (prevRecord.Deaths - prevPrevRecord.Deaths);
+
+                        writer.WriteLine(String.Join(",",
+                                Program.IndexToDate(i).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                                string.Concat("\"", recordPair.Key.CountyDistrict, "\""),
+                                string.Concat("\"", recordPair.Key.ProvinceState, "\""),
+                                string.Concat("\"", recordPair.Key.CountryRegion, "\""),
+                                recordPair.Key.Latitude,
+                                recordPair.Key.Longitude,
+                                recordPair.Value.Confirmed,
+                                recordPair.Value.Deaths,
+                                newConfirmed,
+                                newDeaths,
+                                deltaConfirmed,
+                                deltaDeaths
+                                ));
+                    }
+                }
+            }
+        }
+
+        public DateTime LastDate
+        {
+            get
+            {
+                return Program.IndexToDate(m_data.Count - 1);
+            }
+        }
+
+    }
+
+    static class States
+    {
+        static readonly Dictionary<string, string> s_StateAbbreviations = new Dictionary<string, string>()
+        {
+            {"AL", "Alabama"},
+            {"AK", "Alaska"},
+            {"AZ", "Arizona"},
+            {"AR", "Arkansas"},
+            {"CA", "California"},
+            {"CO", "Colorado"},
+            {"CT", "Connecticut"},
+            {"DE", "Delaware"},
+            {"FL", "Florida"},
+            {"GA", "Georgia"},
+            {"HI", "Hawaii"},
+            {"ID", "Idaho"},
+            {"IL", "Illinois"},
+            {"IN", "Indiana"},
+            {"IA", "Iowa"},
+            {"KS", "Kansas"},
+            {"KY", "Kentucky"},
+            {"LA", "Louisiana"},
+            {"ME", "Maine"},
+            {"MD", "Maryland"},
+            {"MA", "Massachusetts"},
+            {"MI", "Michigan"},
+            {"MN", "Minnesota"},
+            {"MS", "Mississippi"},
+            {"MO", "Missouri"},
+            {"MT", "Montana"},
+            {"NE", "Nebraska"},
+            {"NV", "Nevada"},
+            {"NH", "New Hampshire"},
+            {"NJ", "New Jersey"},
+            {"NM", "New Mexico"},
+            {"NY", "New York"},
+            {"NC", "North Carolina"},
+            {"ND", "North Dakota"},
+            {"OH", "Ohio"},
+            {"OK", "Oklahoma"},
+            {"OR", "Oregon"},
+            {"PA", "Pennsylvania"},
+            {"RI", "Rhode Island"},
+            {"SC", "South Carolina"},
+            {"SD", "South Dakota"},
+            {"TN", "Tennessee"},
+            {"TX", "Texas"},
+            {"UT", "Utah"},
+            {"VT", "Vermont"},
+            {"VA", "Virginia"},
+            {"WA", "Washington"},
+            {"WV", "West Virginia"},
+            {"WI", "Wisconsin"},
+            {"WY", "Wyoming"},
+            {"DC", "District of Columbia"},
+            {"MH", "Marshall Islands"},
+            {"D.C.", "District of Columbia" }
+        };
+
+        public static string DeAbbreviate(string ab)
+        {
+            string name;
+            if (s_StateAbbreviations.TryGetValue(ab.ToUpperInvariant(), out name))
+            {
+                return name;
+            }
+            return ab;
+        }
     }
 }
