@@ -384,6 +384,8 @@ Options:
                     // Special Updates and Cleanup
                     if (countryRegion.Equals("Mainland China", StringComparison.OrdinalIgnoreCase))
                         countryRegion = "China";
+                    if (countryRegion.Equals("South Korea", StringComparison.OrdinalIgnoreCase))
+                        countryRegion = "Korea, South";
                     if (countryRegion.Equals("US") && countyIndex < 0)
                     {
                         int comma = provinceState.IndexOf(',');
@@ -567,14 +569,28 @@ Options:
                     {
                         // Look for the two previous records
                         DataRecord prevRecord = null;
-                        if (!m_data[i - 1].TryGetValue(recordPair.Key, out prevRecord))
+                        int n = i - 1;
+                        for (; ; )
                         {
-                            prevRecord = s_zeroRecord;
+                            if (n < 0)
+                            {
+                                prevRecord = s_zeroRecord;
+                                break;
+                            }
+                            if (m_data[n].TryGetValue(recordPair.Key, out prevRecord)) break;
+                            --n;
                         }
                         DataRecord prevPrevRecord = null;
-                        if (!m_data[i - 2].TryGetValue(recordPair.Key, out prevPrevRecord))
+                        --n;
+                        for (; ; )
                         {
-                            prevPrevRecord = s_zeroRecord;
+                            if (n < 0)
+                            {
+                                prevPrevRecord = s_zeroRecord;
+                                break;
+                            }
+                            if (m_data[n].TryGetValue(recordPair.Key, out prevPrevRecord)) break;
+                            --n;
                         }
 
                         int newConfirmed = recordPair.Value.Confirmed - prevRecord.Confirmed;
