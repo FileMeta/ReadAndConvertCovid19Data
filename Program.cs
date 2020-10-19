@@ -567,36 +567,37 @@ Options:
                     // Enumerate every record on this date
                     foreach (var recordPair in recordList)
                     {
-                        // Look for the two previous records
+                        // Look for the previous record (up to seven steps)
                         DataRecord prevRecord = null;
-                        int n = i - 1;
-                        for (; ; )
+                        int j;
+                        for (j = 1; j < 7 && i-j >= 0; ++j)
                         {
-                            if (n < 0)
-                            {
-                                prevRecord = s_zeroRecord;
-                                break;
-                            }
-                            if (m_data[n].TryGetValue(recordPair.Key, out prevRecord)) break;
-                            --n;
-                        }
-                        DataRecord prevPrevRecord = null;
-                        --n;
-                        for (; ; )
-                        {
-                            if (n < 0)
-                            {
-                                prevPrevRecord = s_zeroRecord;
-                                break;
-                            }
-                            if (m_data[n].TryGetValue(recordPair.Key, out prevPrevRecord)) break;
-                            --n;
+                            if (m_data[i-j].TryGetValue(recordPair.Key, out prevRecord)) break;
                         }
 
-                        int newConfirmed = recordPair.Value.Confirmed - prevRecord.Confirmed;
-                        int deltaConfirmed = newConfirmed - (prevRecord.Confirmed - prevPrevRecord.Confirmed);
-                        int newDeaths = recordPair.Value.Deaths - prevRecord.Deaths;
-                        int deltaDeaths = newDeaths - (prevRecord.Deaths - prevPrevRecord.Deaths);
+                        // Look for the previous previous record (up to seven steps)
+                        DataRecord prevPrevRecord = null;
+                        int k;
+                        for (k=1; k < 7 && i-j-k >= 0; ++k)
+                        {
+                            if (m_data[i-j-k].TryGetValue(recordPair.Key, out prevPrevRecord)) break;
+                        }
+
+                        int newConfirmed = 0;   // When no data available, use zero
+                        int newDeaths = 0;
+                        if (prevRecord != null)
+                        {
+                            newConfirmed = recordPair.Value.Confirmed - prevRecord.Confirmed;
+                            newDeaths = recordPair.Value.Deaths - prevRecord.Deaths;
+                        }
+
+                        int deltaConfirmed = 0;
+                        int deltaDeaths = 0;
+                        if (prevRecord != null && prevPrevRecord != null)
+                        {
+                            deltaConfirmed = newConfirmed - (prevRecord.Confirmed - prevPrevRecord.Confirmed);
+                            deltaDeaths = newDeaths - (prevRecord.Deaths - prevPrevRecord.Deaths);
+                        }
 
                         writer.WriteLine(String.Join(",",
                                 Program.IndexToDate(i).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
