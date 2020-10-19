@@ -556,7 +556,7 @@ Options:
             using (var writer = new StreamWriter(OutputPath, false, Program.s_UTF8_No_BOM))
             {
                 writer.NewLine = "\n";
-                writer.WriteLine("\"Date\",\"CountyDistrict\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"TotalConfirmed\",\"TotalDeaths\",\"NewConfirmed\",\"NewDeaths\",\"Deltaconfirmed\",\"DeltaDeaths\"");
+                writer.WriteLine("\"Date\",\"CountyDistrict\",\"ProvinceState\",\"CountryRegion\",\"Lat\",\"Long\",\"TotalConfirmed\",\"TotalDeaths\",\"NewConfirmed\",\"NewDeaths\",\"SevenDayAvgConfirmed\",\"SevenDayAvgDeaths\"");
 
                 // We start with two days into the data thereby letting us look back two days for deltas
                 for (int i = 2; i < m_data.Count; ++i)
@@ -567,20 +567,26 @@ Options:
                     // Enumerate every record on this date
                     foreach (var recordPair in recordList)
                     {
-                        // Look for the previous record (up to seven steps)
-                        DataRecord prevRecord = null;
-                        int j;
-                        for (j = 1; j < 7 && i-j >= 0; ++j)
-                        {
-                            if (m_data[i-j].TryGetValue(recordPair.Key, out prevRecord)) break;
-                        }
+                        // For calculating 7-day moving average.
+                        int confirmedSum = 0;
+                        int deathSum = 0;
+                        int sampleCount = 0;
 
-                        // Look for the previous previous record (up to seven steps)
-                        DataRecord prevPrevRecord = null;
-                        int k;
-                        for (k=1; k < 7 && i-j-k >= 0; ++k)
+                        // Look over the preceding 6 days
+                        DataRecord prevRecord = null;
+                        int runningConfirmed = recordPair.Value.Confirmed;
+                        int runningDeaths = recordPair.Value.Deaths;
+                        for (int j = 1; j < 8 && i-j >= 0; ++j)
                         {
-                            if (m_data[i-j-k].TryGetValue(recordPair.Key, out prevPrevRecord)) break;
+                            if (m_data[i-j].TryGetValue(recordPair.Key, out var scanRecord))
+                            {
+                                if (prevRecord == null) prevRecord = scanRecord;
+                                confirmedSum += runningConfirmed - scanRecord.Confirmed;
+                                runningConfirmed = scanRecord.Confirmed;
+                                deathSum += runningDeaths - scanRecord.Deaths;
+                                runningDeaths = scanRecord.Deaths;
+                                ++sampleCount;
+                            }
                         }
 
                         int newConfirmed = 0;   // When no data available, use zero
@@ -591,12 +597,17 @@ Options:
                             newDeaths = recordPair.Value.Deaths - prevRecord.Deaths;
                         }
 
-                        int deltaConfirmed = 0;
-                        int deltaDeaths = 0;
-                        if (prevRecord != null && prevPrevRecord != null)
+                        double averageConfirmed;
+                        double averageDeaths;
+                        if (sampleCount > 0)
                         {
-                            deltaConfirmed = newConfirmed - (prevRecord.Confirmed - prevPrevRecord.Confirmed);
-                            deltaDeaths = newDeaths - (prevRecord.Deaths - prevPrevRecord.Deaths);
+                            averageConfirmed = (double)confirmedSum / (double)sampleCount;
+                            averageDeaths = (double)deathSum / (double)sampleCount;
+                        }
+                        else
+                        {
+                            averageConfirmed = 0;
+                            averageDeaths = 0;
                         }
 
                         writer.WriteLine(String.Join(",",
@@ -610,8 +621,8 @@ Options:
                                 recordPair.Value.Deaths,
                                 newConfirmed,
                                 newDeaths,
-                                deltaConfirmed,
-                                deltaDeaths
+                                averageConfirmed.ToString("F2"),
+                                averageDeaths.ToString("F2")
                                 ));
                     }
                 }
