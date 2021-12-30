@@ -35,6 +35,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * This is a quick hack - intended to last a few months during the COVID-19
  * crisis. It's not intended to be an example of well-structured code.
  * 
+ * Update: December 2021 As we all know, COVID has lasted a lot more than
+ * a few months and so has this program. Nevertheless, it's still a hack
+ * and not an example of good, clean coding style.
+ * 
 */
 
 using System;
@@ -42,6 +46,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Net;
+using System.Net.Http;
 using System.IO;
 using System.Globalization;
 using System.Diagnostics;
@@ -119,6 +124,7 @@ Options:
         // UTF8 encoding with no byte-order mark.
         public static readonly Encoding s_UTF8_No_BOM = new UTF8Encoding(false, true);
 
+        const string c_dataCacheDirName = "Covid19DataCache";
         const string c_covidDataUrlPrefix = @"https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/";
 
         const string c_covid19OutputFilename = "COVID-19-Time-Series-csse.csv";
@@ -271,36 +277,11 @@ Options:
 
         static bool ReadData(int dateIndex, IEnumerable<DataSet> datasets)
         {
-            string url = $"{c_covidDataUrlPrefix}{IndexToDate(dateIndex).ToString("MM-dd-yyyy")}.csv";
-            Console.WriteLine("Reading from " + url);
-
-            MemoryStream memStream;
-            try
-            {
-                HttpWebRequest.DefaultCachePolicy = s_cachePolicy;
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                request.CachePolicy = s_cachePolicy;
-                request.Headers.Set("Cache-Control", "max-age=0, no-cache, no-store");
-                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-
-                // StreamReader seems to have trouble with an HTTPWebResponse stream. When the response re-buffers
-                // we get an end of file. To compensate, read to a memory stream first and then parse.
-                memStream = new MemoryStream();
-                using (var httpStream = response.GetResponseStream())
-                {
-                    httpStream.CopyTo(memStream);
-                }
-                memStream.Position = 0;
-            }
-            catch (WebException err)
-            {
-                var response = err.Response as HttpWebResponse;
-                if (response != null && response.StatusCode == HttpStatusCode.NotFound) return false;
-                throw;
-            }
+            var inStream = GetData(dateIndex);
+            if (inStream == null) return false;
 
             //Expected Header: FIPS, Admin2, Province_State, Country, Last_Update, Lat, Long_, Confirmed, Deaths, Recovered, Active, Combined_Key
-            using (var reader = new CsvReader(new StreamReader(memStream, Encoding.UTF8, true), true))
+            using (var reader = new CsvReader(new StreamReader(inStream, Encoding.UTF8, true, 1024, false), true))
             {
                 // Read the header line
                 var header = reader.Read();
@@ -414,6 +395,57 @@ Options:
             }
 
             return true;
+        }
+
+        static HttpClient s_client;
+        static string s_cacheDir;
+
+        /// <summary>
+        /// Get the COVID data for the specified dateIndex
+        /// </summary>
+        /// <param name="dateIndex"></param>
+        /// <returns></returns>
+        private static Stream GetData(int dateIndex)
+        {
+            if (s_cacheDir == null)
+            {
+                s_cacheDir = Path.Combine(Path.GetTempPath(), c_dataCacheDirName);
+                if (!Directory.Exists(s_cacheDir))
+                {
+                    Directory.CreateDirectory(s_cacheDir);
+                }
+            }
+
+            var filename = $"{IndexToDate(dateIndex).ToString("MM-dd-yyyy")}.csv";
+            var path = Path.Combine(s_cacheDir, filename);
+
+            // Try the file first
+            if (File.Exists(path))
+            {
+                Console.Write($"From cache: {filename}\r");
+                return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+
+            // Otherwise, read from the network
+            if (s_client == null) s_client = new HttpClient();
+
+            string url = string.Concat(c_covidDataUrlPrefix, filename);
+            Console.WriteLine("Reading from " + url);
+
+            using (var response = s_client.GetAsync(url).GetAwaiter().GetResult())
+            {
+                if (response.StatusCode == HttpStatusCode.NotFound) return null;
+                if (!response.IsSuccessStatusCode)
+                    throw new ApplicationException("Failed to read: " + url);
+                var stream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+
+                var fileStream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                stream.CopyTo(fileStream);
+                stream.Dispose(); // Probably not necessary as disposing response takes care of this.
+
+                fileStream.Position = 0;
+                return fileStream;
+            }
         }
 
         private static DateTime ParseSimpleDate(string strDate)
